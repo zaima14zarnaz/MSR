@@ -1,4 +1,4 @@
-# TSPNet (Temporal Saliency Prediction Network)
+# TSPNet (Text-Derived Spatial Prior Network)
 
 Train and evaluate a two-stage saliency ranking model:
 
