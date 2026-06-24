@@ -96,7 +96,7 @@ class GRG(nn.Module):
         return x
 
 
-class MSRModel(nn.Module):
+class TSPNet(nn.Module):
     def __init__(
         self,
         salient_region_extractor=None,
