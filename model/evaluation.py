@@ -17,11 +17,11 @@ import time
 
 
 # from bsd.backbone_variants.variant_2A_res_50 import SalientRegionExtractionNetwork
-# from msr_model.msr import LGSRModel
+# from tspnet_model.tspnet import TSPNet
 # from bsd.visual_prompt_experiment.backbones.res101 import SalientRegionExtractionNetwork
-# from msr_model.msr import MSRModel
-from msr_model.salient_region_extraction_network import SalientRegionExtractionNetwork
-from msr_model.msr import MSRModel
+# from tspnet_model.tspnet import TSPNet
+from tspnet_model.salient_region_extraction_network import SalientRegionExtractionNetwork
+from tspnet_model.tspnet import TSPNet
 from losses import compute_losses
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -92,12 +92,12 @@ test_loader = DataLoader(
     test_dataset, batch_size=4, shuffle=False, num_workers=4, collate_fn=variable_collate_fn
 )
 
-model_dir = "../msr-checkpoints/20260520_141257/epoch_2_0_0-8821.pth"
+model_dir = "../tspnet-checkpoints/20260520_141257/epoch_2_0_0-8821.pth"
 state = torch.load(model_dir, map_location="cpu")
 bsd_model = SalientRegionExtractionNetwork(
     backbone_pretrained=True, mod_injection=False, dropout_p=0.2
 ).to(device)
-rank_model = MSRModel(feature_dim=FEATURE_DIM, dropout_p=0.2).to(device)
+rank_model = TSPNet(feature_dim=FEATURE_DIM, dropout_p=0.2).to(device)
 load_component_analysis_checkpoint(bsd_model, rank_model, state)
 bsd_model.eval()
 rank_model.eval()

@@ -16,9 +16,9 @@ from datetime import datetime
 from scipy.stats import spearmanr
 from datetime import datetime
 
-# Component analysis: BSD variant -> precomputed features -> msr_model.msr MSRModel
-from msr_model.salient_region_extraction_network import SalientRegionExtractionNetwork
-from msr_model.msr import MSRModel
+# Component analysis: BSD variant -> precomputed features -> tspnet_model.tspnet TSPNet
+from tspnet_model.salient_region_extraction_network import SalientRegionExtractionNetwork
+from tspnet_model.tspnet import TSPNet
 from losses import compute_losses
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -81,9 +81,9 @@ def component_analysis_checkpoint(bsd_model, rank_model):
         "rank_model": rank_model.state_dict(),
     }
 splits = {"train": "train", "val": "val", "test": "test"}
-dataset_dir = "/home/zaimaz/Desktop/research1/QAGNet/Dataset/IRSR_ASSR"
-# dataset_dir = "/data/research/zaima/dataset/Dataset/SIFR/SIFR_dataset"
-# dataset_dir = "/data/research/zaima/dataset/Dataset/ASSR"
+dataset_dir = "../Dataset/IRSR_ASSR"
+# dataset_dir = "../Dataset/SIFR_dataset"
+# dataset_dir = "../Dataset/ASSR"
 images_store = "images"
 ranks_order_store = "rank_order"
 
@@ -120,7 +120,7 @@ full_dataset = ConcatDataset([train_dataset, val_dataset])
 # full_dataset = train_dataset
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-model_save_path = "/data/research/zaima/dataset/Dataset/msr-checkpoints"
+model_save_path = "../tspnet-checkpoints"
 model_save_path = os.path.join(model_save_path, timestamp)
 os.makedirs(model_save_path, exist_ok=True)
 
@@ -186,7 +186,7 @@ def train(model_save_path, run_no, full_dataset, seed=42):
     bsd_model = SalientRegionExtractionNetwork(
         backbone_pretrained=True, mod_injection=False, dropout_p=0.2
     ).to(device)
-    rank_model = MSRModel(feature_dim=FEATURE_DIM, dropout_p=0.2).to(device)
+    rank_model = TSPNet(feature_dim=FEATURE_DIM, dropout_p=0.2).to(device)
 
     optimizer = torch.optim.Adam(
         [
