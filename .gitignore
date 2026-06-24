@@ -8,6 +8,7 @@ evaluation/__pycache__/
 pre_process/__pycache__/
 model/__pycache__/
 
+model/bsd/
 model/bsd/ablation_studies/
 model/bsd/backbone_variants/
 model/bsd/film_experiments/
@@ -24,6 +25,9 @@ model/bsd/train.py
 
 model/mask_prediction/
 model/variants/
+model/outputs/
+model/saliency_maps/
+model/inference.py
 
 *.pth
 *.pt

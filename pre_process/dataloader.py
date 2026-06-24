@@ -10,8 +10,8 @@ import random
 import csv
 from nltk.tokenize import sent_tokenize
 import nltk
-nltk.download('punkt')
-import spacy
+
+nltk.download("punkt", quiet=True)
 
 class SaliencyDataset(Dataset):
     def __init__(self, image_dir, rank_dir, obj_seg_json, transform=None, img_size=(512, 512), roi_offset=15, descriptions_csv=None):
@@ -46,7 +46,6 @@ class SaliencyDataset(Dataset):
 
         if self.descriptions_csv is not None:
             MAX_WORDS = 30  # safe upper bound for CLIP (≈ <77 tokens)
-
             with open(self.descriptions_csv, 'r') as f:
                 reader = csv.reader(f)
                 next(reader)
@@ -72,7 +71,7 @@ class SaliencyDataset(Dataset):
 
                     # store trimmed phrases
                     self.description_phrases[image_filename] = trimmed_phrases
-
+            self.rng = random.Random(42)
    
     
     def __len__(self):
@@ -107,10 +106,14 @@ class SaliencyDataset(Dataset):
 
         obj_masks_pil, rois_xyxy, gt_classes = [], [], []  # << added gt_classes list
 
+        # insert roi filtering loop here. 
+
         for obj_idx, obj in enumerate(obj_info_list):
             segs = obj.get("segmentation", [])
             bbox = obj.get("bbox", None)
             category_id = obj.get("category_id", -1)
+            if category_id == -1:
+                category_id = 1
 
             if bbox is None:
                 continue
@@ -200,8 +203,12 @@ class SaliencyDataset(Dataset):
         # --- Phrases ---
         # todo: Extract phrases from your csv file here
         phrases = self.description_phrases.get(img_name, [])  # get list of phrases for this image
-        
+        # phrases = ['panda','panda','panda','panda','panda','panda','panda','panda','panda','panda']
+        # phrases = ["","","","","","","","","",""]
+        # phrases =  []
+        # phrases = ["66666666666666666666666666666666666666666666666666666666666666666666-6-6-6-6666 the666 the6 66666 66 666 of666666666666666666666666666666666666666666666666666666666666666666666666666666666"]
+        # phrases = ["The image shows a cat having a good time while the dog is playing with the ball.", "Beside the river, there is a tall tree with beautiful green leaves and ripe orange vines."]
+        # phrases = ["There is no one in the image"]
         # <== SHUFFLE PHRASES HERE
         # self.rng.shuffle(phrases) 
-
         return img_id, image, gt_bin_mask, gt_rank_tensor, gt_class_tensor, obj_masks, rois, phrases
