@@ -20,23 +20,34 @@ import time
 # from msr_model.msr import LGSRModel
 # from bsd.visual_prompt_experiment.backbones.res101 import SalientRegionExtractionNetwork
 # from msr_model.msr import MSRModel
-from msr_model.salient_region_extraction_network import SalientRegionExtractionNetwork
+from bsd.visual_prompt_experiment.overlay_settings.image_only import (
+    SalientRegionExtractionNetwork,
+)
 from msr_model.msr import MSRModel
 from losses import compute_losses
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from pre_process.dataloader import SaliencyDataset
-from metrics import filter_rois
-from metrics import calculate_metrics
-from pre_process.collate import variable_collate_fn
 
-FEATURE_DIM = 256
+def _align_per_image_list(items, batch_size, empty_tensor):
+    aligned = []
+    for b in range(batch_size):
+        if b < len(items):
+            aligned.append(items[b])
+        else:
+            aligned.append(empty_tensor)
+    return aligned
 
 
-def run_component_analysis_batch(bsd_model, rank_model, imgs, rois):
+def run_component_analysis_batch(bsd_model, rank_model, imgs, rois, phrases=None):
     batch_size = imgs.shape[0]
-    roi_embed, pred_masks, pred_class, _ = bsd_model(imgs, rois, phrases=None)
+    roi_embed, pred_masks, pred_class, phrase_saliency_scores = bsd_model(
+        imgs, rois, phrases=phrases
+    )
     rank_out = rank_model(roi_embed, rois=rois, phrases=None)
+
+    empty_rank = roi_embed.new_zeros(0) if roi_embed.numel() > 0 else imgs.new_zeros(0)
+    pred_ranks_per_image = _align_per_image_list(
+        rank_out["rank_score"], batch_size, empty_rank
+    )
 
     if pred_class is not None and pred_class.numel() > 0 and rois.numel() > 0:
         batch_idx = rois[:, 0].long()
@@ -50,30 +61,72 @@ def run_component_analysis_batch(bsd_model, rank_model, imgs, rois):
         ]
 
     return {
-        "rank_score": rank_out["rank_score"],
+        "rank_score": pred_ranks_per_image,
         "mask": pred_masks,
         "class_logits": pred_class_per_image,
-        "phrase_saliency_score": rank_out["phrase_saliency_score"],
+        "phrase_saliency_score": phrase_saliency_scores,
     }
 
 
 def load_component_analysis_checkpoint(bsd_model, rank_model, state):
-    if isinstance(state, dict) and "bsd_model" in state and "rank_model" in state:
+    if not isinstance(state, dict):
+        raise RuntimeError(f"Expected checkpoint dict, got {type(state)}")
+
+    if "bsd_model" in state and "rank_model" in state:
         bsd_model.load_state_dict(state["bsd_model"])
         rank_model.load_state_dict(state["rank_model"])
         return
-    raise RuntimeError(
-        "Expected checkpoint with top-level keys 'bsd_model' and 'rank_model' "
-        "(component-analysis format from train_contra_loss.py)."
+
+    if "msr_model" in state and isinstance(state["msr_model"], dict):
+        state = state["msr_model"]
+
+    has_extractor = any(k.startswith("salient_region_extractor.") for k in state)
+    has_rank = any(
+        k.startswith(prefix)
+        for k in state
+        for prefix in ("rank_head.", "gat.", "batch_embed.")
     )
+    if has_extractor or has_rank:
+        if has_extractor:
+            bsd_sd = {
+                k[len("salient_region_extractor.") :]: v
+                for k, v in state.items()
+                if k.startswith("salient_region_extractor.")
+            }
+            bsd_model.load_state_dict(bsd_sd, strict=False)
+        if has_rank:
+            rank_sd = {
+                k: v
+                for k, v in state.items()
+                if k.startswith(("rank_head.", "gat.", "batch_embed."))
+            }
+            rank_model.load_state_dict(rank_sd, strict=False)
+        return
+
+    raise RuntimeError(
+        "Unrecognized checkpoint format. Expected either:\n"
+        "  - {'bsd_model': ..., 'rank_model': ...} (train_contra_loss.py), or\n"
+        "  - flat MSRModel keys ('salient_region_extractor.*', 'rank_head.*', 'gat.*')."
+    )
+
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from pre_process.dataloader import SaliencyDataset
+from metrics import filter_rois
+from metrics import calculate_metrics
+from pre_process.collate import variable_collate_fn
+
+FEATURE_DIM = 256
+
+
 
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 splits = {"train": "train", "val": "val", "test": "test"}
-dataset_dir = "../Dataset/IRSR_ASSR"
-# dataset_dir = "../Dataset/ASSR" 
-# dataset_dir = "../Dataset/SIFR_dataset"
-sal_map_dir = "../saliency_maps"
+dataset_dir = "/home/zaimaz/Desktop/research1/QAGNet/Dataset/IRSR_ASSR"
+# dataset_dir = "/data/research/zaima/dataset/Dataset/ASSR" 
+# dataset_dir = "/data/research/zaima/dataset/Dataset/SIFR/SIFR_dataset"
+sal_map_dir = "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/saliency_maps"
 os.makedirs(sal_map_dir, exist_ok=True)
 dataset_name = os.path.basename(dataset_dir)
 images_store = "images"
@@ -85,14 +138,14 @@ test_dataset = SaliencyDataset(
     rank_dir=os.path.join(dataset_dir, ranks_order_store, splits["test"]),
     obj_seg_json=os.path.join(dataset_dir, f"obj_seg_data_{splits['test']}.json"),
     img_size=(512, 512),
-    descriptions_csv = os.path.join(dataset_dir, "test.csv")
+    descriptions_csv = os.path.join(dataset_dir, "test_gpt4v.csv")
 )
 # test_dataset = Subset(test_dataset, list(range(50)))
 test_loader = DataLoader(
     test_dataset, batch_size=4, shuffle=False, num_workers=4, collate_fn=variable_collate_fn
 )
 
-model_dir = "../msr-checkpoints/20260520_141257/epoch_2_0_0-8821.pth"
+model_dir = "/data/research/zaima/dataset/Dataset/msr-checkpoints/20260524_015558/epoch_2_0_0-8911.pth"
 state = torch.load(model_dir, map_location="cpu")
 bsd_model = SalientRegionExtractionNetwork(
     backbone_pretrained=True, mod_injection=False, dropout_p=0.2
@@ -113,7 +166,7 @@ mae_total, n_mae = 0.0, 0
 criterion_cls = torch.nn.CrossEntropyLoss()
 overlap_threshold = 0.5
 # confidence_threshold  = 0.5 # For IRSR and SIFR dataset
-confidence_threshold = 0.4  # For ASSR dataset (vis only)
+confidence_threshold  =  0.4  # For ASSR dataset (vis only)
 
 pbar = tqdm(
     test_loader,
@@ -146,7 +199,9 @@ with torch.no_grad():
         else:
             rois = torch.zeros((0, 5), dtype=torch.float32, device=device)
             gt_obj_class = torch.zeros((0,), dtype=torch.long, device=device)
-        out = run_component_analysis_batch(bsd_model, rank_model, imgs, rois)
+        out = run_component_analysis_batch(
+            bsd_model, rank_model, imgs, rois, phrases=list(phrases)
+        )
         pred_ranks = out["rank_score"]
         pred_masks = out["mask"]
         pred_class = out["class_logits"]

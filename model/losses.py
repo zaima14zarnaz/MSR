@@ -334,16 +334,164 @@ def calculate_prompt_loss(roi_prompts, ranks, same_scale=1.0, diff_scale=1.0):
 
     return total_loss / total_pairs
 
-def compute_losses(gt_ranks, 
-                   gt_masks, 
-                   gt_class, 
-                   pred_ranks,
-                   pred_masks, 
-                   pred_class,
-                   valid_rois, 
-                   filtered_pred_class, 
-                   criterion_cls, 
-                   device):
+
+def _to_1d_float_tensor(x, device):
+    if x is None:
+        return None
+    if torch.is_tensor(x):
+        return x.reshape(-1).float().to(device)
+    return torch.tensor(x, dtype=torch.float32, device=device).reshape(-1)
+
+
+def _spearman_corr_1d(phrase_scores, visual_ranks):
+    """Spearman rho between phrase saliency scores and GT visual ranks (monitoring only)."""
+    if phrase_scores.numel() < 2:
+        return None
+    s_rank = torch.argsort(torch.argsort(phrase_scores)).float()
+    r_rank = torch.argsort(torch.argsort(visual_ranks)).float()
+    s_std = s_rank.std(unbiased=False)
+    r_std = r_rank.std(unbiased=False)
+    if s_std < 1e-8 or r_std < 1e-8:
+        return None
+    rho = ((s_rank - s_rank.mean()) * (r_rank - r_rank.mean())).mean() / (s_std * r_std + 1e-8)
+    rho_val = float(rho.detach().cpu().item())
+    if rho_val != rho_val:  # NaN
+        return None
+    return rho_val
+
+
+def phrase_overlay_rank_consistency_loss(
+    phrase_scores_per_image,
+    gt_ranks,
+    lower_rank_is_more_salient=True,
+    lambda_order=0.5,
+    lambda_value=1.0,
+    lambda_same=0.5,
+    temperature=0.1,
+    return_correlation=False,
+):
+    if phrase_scores_per_image is None:
+        return None
+
+    if not isinstance(phrase_scores_per_image, list):
+        phrase_scores_per_image = [phrase_scores_per_image]
+
+    if not isinstance(gt_ranks, list):
+        gt_ranks = [gt_ranks]
+
+    losses = []
+    correlations = []
+    device = None
+
+    for phrase_scores, ranks in zip(phrase_scores_per_image, gt_ranks):
+        if phrase_scores is None:
+            continue
+
+        device = phrase_scores.device
+        s = _to_1d_float_tensor(phrase_scores, device)
+        r = _to_1d_float_tensor(ranks, device)
+
+        if s is None or r is None:
+            continue
+
+        n = min(s.numel(), r.numel())
+        if n < 2:
+            continue
+
+        s = s[:n]
+        r = r[:n]
+
+        valid = torch.isfinite(s) & torch.isfinite(r)
+        if valid.sum() < 2:
+            continue
+
+        s = s[valid]
+        r = r[valid]
+
+        r_min = r.min()
+        r_max = r.max()
+
+        if torch.abs(r_max - r_min) < 1e-6:
+            target = torch.ones_like(r) * 0.5
+        else:
+            if lower_rank_is_more_salient:
+                target = (r_max - r) / (r_max - r_min + 1e-6)
+            else:
+                target = (r - r_min) / (r_max - r_min + 1e-6)
+
+        value_loss = F.smooth_l1_loss(s, target)
+
+        rank_diff = r[:, None] - r[None, :]
+        score_diff = s[:, None] - s[None, :]
+
+        upper_mask = torch.triu(
+            torch.ones_like(rank_diff, dtype=torch.bool),
+            diagonal=1,
+        )
+
+        order_mask = upper_mask & (rank_diff != 0)
+        if order_mask.any():
+            if lower_rank_is_more_salient:
+                order_target = -torch.sign(rank_diff[order_mask])
+            else:
+                order_target = torch.sign(rank_diff[order_mask])
+
+            order_loss = F.softplus(
+                -(order_target * score_diff[order_mask]) / temperature
+            ).mean()
+        else:
+            order_loss = s.sum() * 0.0
+
+        same_rank_mask = upper_mask & (rank_diff == 0)
+        if same_rank_mask.any():
+            same_loss = torch.abs(score_diff[same_rank_mask]).mean()
+        else:
+            same_loss = s.sum() * 0.0
+
+        loss = (
+            lambda_value * value_loss
+            + lambda_order * order_loss
+            + lambda_same * same_loss
+        )
+
+        losses.append(loss)
+
+        corr = _spearman_corr_1d(s, r)
+        if corr is not None:
+            correlations.append(corr)
+
+    mean_correlation = (
+        float(sum(correlations) / len(correlations)) if correlations else float("nan")
+    )
+
+    if len(losses) == 0:
+        if device is None:
+            loss = torch.tensor(0.0, requires_grad=True)
+        else:
+            loss = torch.tensor(0.0, device=device, requires_grad=True)
+    else:
+        loss = torch.stack(losses).mean()
+
+    if return_correlation:
+        return loss, mean_correlation
+    return loss
+
+
+def compute_losses(
+    gt_ranks,
+    gt_masks,
+    gt_class,
+    pred_ranks,
+    pred_masks,
+    pred_class,
+    phrase_saliency_scores,
+    valid_rois,
+    filtered_pred_class,
+    criterion_cls,
+    device,
+    lambda_phrase_overlay=0.5,
+):
+    gt_ranks_for_phrase = gt_ranks
     # ----- Restructure tensors for loss computation -------
     if isinstance(pred_ranks, list):
         pred_ranks = torch.cat(pred_ranks, dim=0)
@@ -354,29 +502,54 @@ def compute_losses(gt_ranks,
     gt_r = gt_r.to(pred_ranks.device).float()
 
     if len(valid_rois) == 0 or len(filtered_pred_class) == 0:
-        # Skip classification loss entirely for empty ROI batches
-        class_loss = torch.tensor(0.0, device=device)
-        rank_loss = torch.tensor(0.0, device=device)
-        mask_loss = torch.tensor(0.0, device=device)
-        total_loss = class_loss
+        z = torch.tensor(0.0, device=device)
         return {
-            "rank_loss": 0, 
-            "mask_loss": 0,
-            "class_loss": class_loss
+            "rank_loss": z,
+            "mask_loss": z,
+            "class_loss": z,
+            "phrase_overlay_loss": z,
+            "phrase_rank_correlation": float("nan"),
+            "total_loss": z,
         }
-
-
-
 
     # Compute ranking and mask losses
     mask_loss = dice_loss(pred=pred_masks, target=gt_masks)
     class_loss = class_ce_loss(gt_class, pred_class, criterion_cls, device)
     rank_loss = pairwise_listnet(pred_ranks.view(-1), gt_r.view(-1))
 
+    overlay_result = phrase_overlay_rank_consistency_loss(
+        phrase_saliency_scores,
+        gt_ranks_for_phrase,
+        lower_rank_is_more_salient=True,
+        lambda_order=0.5,
+        lambda_value=1.0,
+        lambda_same=0.5,
+        temperature=0.1,
+        return_correlation=True,
+    )
+    phrase_rank_correlation = float("nan")
+    if overlay_result is None:
+        phrase_overlay_loss = torch.tensor(0.0, device=device)
+    elif isinstance(overlay_result, tuple):
+        phrase_overlay_loss, phrase_rank_correlation = overlay_result
+        phrase_overlay_loss = phrase_overlay_loss.to(device)
+    else:
+        phrase_overlay_loss = overlay_result.to(device)
+
+    total_loss = (
+        rank_loss
+        + mask_loss
+        + class_loss
+        + lambda_phrase_overlay * phrase_overlay_loss
+    )
+
     return {
-        "rank_loss": rank_loss, 
+        "rank_loss": rank_loss,
         "mask_loss": mask_loss,
-        "class_loss": class_loss
+        "class_loss": class_loss,
+        "phrase_overlay_loss": phrase_overlay_loss,
+        "phrase_rank_correlation": phrase_rank_correlation,
+        "total_loss": total_loss,
     }
 
 

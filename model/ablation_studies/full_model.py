@@ -136,7 +136,7 @@ class LGSRModel(nn.Module):
 
         # 1️⃣ ROI → features
         # todo: send phrases to the salient_region_extractor module's forward pass
-        obj_feats, pred_mask, class_logits = self.salient_region_extractor(x, rois)  # [total_rois, feature_dim]
+        obj_feats, pred_mask, class_logits = self.salient_region_extractor(x, rois, phrases)  # [total_rois, feature_dim]
         raw_feats = obj_feats.clone()
 
         # 2️⃣ Per-image GAT reasoning

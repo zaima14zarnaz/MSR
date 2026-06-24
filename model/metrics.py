@@ -78,6 +78,9 @@ def filter_rois(
         if best_overlap < overlap_threshold:
             continue
 
+        if i >= len(pred_ranks) or i >= len(pred_class):
+            continue
+
         # TEMPORARILY add all overlap-valid predictions
         filtered_pred_ranks.append(pred_ranks[i])
         filtered_pred_masks.append(pred_masks[i])

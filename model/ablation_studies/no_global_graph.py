@@ -78,7 +78,7 @@ class LGSRModel(nn.Module):
         # 1) ROI -> features
         # If your extractor supports phrases, swap to:
         # obj_feats, pred_mask, class_logits = self.salient_region_extractor(x, rois, phrases=phrases)
-        obj_feats, pred_mask, class_logits = self.salient_region_extractor(x, rois)
+        obj_feats, pred_mask, class_logits = self.salient_region_extractor(x, rois, phrases)
 
         # 2) Direct ranking (NO GRG)
         rank_scores = self.rank_head(obj_feats)  # [N_rois]

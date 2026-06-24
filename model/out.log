@@ -1,0 +1,43 @@
+nohup: ignoring input
+[nltk_data] Downloading package punkt to /home/zaimaz/nltk_data...
+[nltk_data]   Package punkt is already up-to-date!
+/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/functional.py:554: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4314.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/transformer.py:382: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.self_attn.batch_first was not True(use batch_first for better inference performance)
+  warnings.warn(
+Traceback (most recent call last):
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/model/train_contra_loss.py", line 398, in <module>
+    best_sor = train(
+  File "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/model/train_contra_loss.py", line 165, in train
+    out = model(imgs, rois=rois, phrases=phrase_list)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/model/msr_model/msr.py", line 139, in forward
+    obj_feats, pred_mask, class_logits, phrase_saliency_scores = self.salient_region_extractor(
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/model/bsd/visual_prompt_experiment/backbones/swinb.py", line 758, in forward
+    f4_raw = self.align_s4_raw(feats['s4'])
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/zaimaz/Desktop/research1/QAGNet/sr-model1/model/bsd/visual_prompt_experiment/backbones/swinb.py", line 52, in forward
+    x = self.conv(x)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 554, in forward
+    return self._conv_forward(input, self.weight, self.bias)
+  File "/home/zaimaz/miniconda3/envs/asdnet/lib/python3.10/site-packages/torch/nn/modules/conv.py", line 549, in _conv_forward
+    return F.conv2d(
+RuntimeError: Given groups=1, weight of size [2048, 2048, 3, 3], expected input[2, 1024, 16, 16] to have 2048 channels, but got 1024 channels instead
