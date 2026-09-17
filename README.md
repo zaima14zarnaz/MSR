@@ -104,3 +104,4 @@ The script:
 
 - Checkpoints (`.pth`), generated saliency maps, and local dataset files are not part of the git repository; create or download them before evaluation.
 - `model/evaluation_ca.py` is an alternate evaluation script in the repo; the main test workflow above uses `model/evaluation.py`.
+# tspnet
